@@ -20,7 +20,12 @@ class UpdateUserForm(forms.Form):
         # and secrecy.
         # Return a "ValidationError(<err msg>)" if something 
         # is wrong
-        cleaned_data = super().clean()
+        update_user_select = cleaned_data["update_user_select"]
+        user_auth = UserXtraAuth.objects.get(username=update_user_select)
+        cur_secrecy = user_auth.secrecy
+        if cleaned_data["updated_user_secrecy"] != cur_secrecy:
+            raise ValidationError(_("Cannot edit a form that is not your secrecy level!!!"), code = "invalid")
+        cleaned_data = super().clean()  
         return cleaned_data
         
 class CreateNewsForm(forms.Form):
@@ -28,9 +33,9 @@ class CreateNewsForm(forms.Form):
     new_news_sources = forms.CharField(label="Sources", required=False)
     new_news_secrecy = forms.IntegerField(label="Secrecy Level", required=False)
     
-    def __init__(self, *args, **kargs):
+    def __init__(self, user_secrecy, *args, **kargs):
         super().__init__(*args, **kargs)
-        self.user_secrecy = 0
+        self.user_secrecy = user_secrecy
     
     def clean(self):
         # STUDENT TODO
@@ -43,14 +48,18 @@ class CreateNewsForm(forms.Form):
         # and secrecy.
         # Return a "ValidationError(<err msg>)" if something 
         # is wrong
+
+       
+        if cleaned_data["new_news_secrecy"] < self.user_secrecy:
+            raise ValidationError(_("Cannot create a news form for a lower level!!!"), code = "invalid")
         cleaned_data = super().clean()
         return cleaned_data
         
 class UpdateNewsForm(forms.Form):
     update_news_select = forms.ModelChoiceField(
         label="Update News",
-        queryset=NewsListing.objects.all(),
-        required=False)
+        queryset= NewsListing.objects.all()    #none          
+        ,required=False)
     update_news_query   = forms.CharField(label="Update Query", required=False)
     update_news_sources = forms.CharField(label="Update Sources", required=False)
     update_news_secrecy = forms.IntegerField(label="Update Secrecy", required=False)
@@ -67,7 +76,10 @@ class UpdateNewsForm(forms.Form):
         #
         # This form is constructed in views.py. Modify this constructor to
         # accept the passed-in (filtered) queryset.
-    
+
+        #self.fields['update_news_select'].queryset =
+
+
     def clean(self):
         cleaned_data = super().clean()
         # STUDENT TODO

@@ -99,15 +99,17 @@ def user_account(request):
     # assigned a different classification level.
     # Currently, a user can see all news items. You
     # need to change this to follow the "Simple Security
-    # Property" and the "* Property" of Bell Lapadula.
+    # Property" and the "* Property" of Bell Lapadula.  
     # NOTE: "data" is populated in three different places
     # in this function.
     data = []
     user_auth = UserXtraAuth.objects.get(username=request.user.username)
+    temp = user_auth.secrecy
+
     if request.method == "GET":
         all_queries = NewsListing.objects.all()
         
-        create_form = CreateNewsForm()
+        create_form = CreateNewsForm(temp)
         update_form = UpdateNewsForm()
         all_queries = NewsListing.objects.all()
         for q in all_queries:
