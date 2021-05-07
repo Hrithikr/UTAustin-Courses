@@ -66,7 +66,10 @@ class TLSSession:
         1. set client_time, client_bytes
         2. calculate client_random. There is a method for this
         """
-        pass
+
+        self.client_time = time_part
+        self.client_random_bytes = random_part
+        self.client_random = self.time_and_random(self.client_time, self.client_random_bytes)
 
     def set_server_random(self):
         # STUDENT TODO
@@ -74,7 +77,12 @@ class TLSSession:
         1. set server_time, server_bytes
         2. calculate server_random. There is a method for this
         """
-        pass
+
+
+        self.server_time = int(timestamp())
+        self.server_random_bytes = randstring(28)
+        self.server_random = self.time_and_random(self.server_time, self.server_random_bytes)
+        print(len(self.server_random), self.server_random)
 
     def set_server_rsa_privkey(self, rsa_privkey):
         self.server_rsa_privkey = rsa_privkey
@@ -97,7 +105,22 @@ class TLSSession:
         3. calculate a key block
         4. split the key block into read and write keys for enc and mac
         """
-        pass
+
+        self.pre_master_secret = self.server_dh_privkey.exchange(self.client_dh_pubkey)
+        print("==============", self.pre_master_secret)
+        self.master_secret = self.PRF.compute_master_secret(self.pre_master_secret, self.client_random, self.server_random)
+        key_block = self.PRF.derive_key_block(self.master_secret, self.server_random, self.client_random,self.key_block_len)
+
+        print("==============", key_block)
+
+        self.read_mac, key_block = (key_block[: self.mac_key_size], key_block[self.mac_key_size :])
+        self.write_mac, key_block = (key_block[: self.mac_key_size], key_block[self.mac_key_size :])
+
+        self.read_enc, key_block = (key_block[: self.enc_key_size], key_block[self.enc_key_size :])
+        self.write_enc, key_block = (key_block[: self.enc_key_size], key_block[self.enc_key_size :])
+
+        print("==============", key_block)
+        
 
     def tls_sign(self, bytes):
         """
@@ -125,7 +148,32 @@ class TLSSession:
         6. NOTE: When you do the HMAC, don't forget to re-create the header with the plaintext len!
         """
         plaintext = b''
-        return plaintext
+        header = tls_pkt_bytes[:5]
+        data = tls_pkt_bytes[5:]
+        iv = data[:16]
+        data = data[16:]
+        assert len(data) < 2 ** 16
+
+        cipher = Cipher(algorithms.AES(self.read_enc), modes.CBC(iv), default_backend())
+        decryptor = cipher.decryptor()
+        plaintext_data = decryptor.update(data) + decryptor.finalize()
+        pad_len = int(plaintext_data[-1]) + 1
+        print(plaintext_data)
+        print(pad_len)
+        plaintext_no_pad = plaintext_data[:-pad_len]
+        mac = plaintext_no_pad[-20:]
+
+        plaintext_no_mac = plaintext_no_pad[:-20]
+        mac_hdr = header[:3] + struct.pack("!H", len(plaintext_no_mac))
+        cmac = self.compute_mac(mac_hdr, plaintext_no_mac, False)
+
+        print(len(plaintext_no_mac), plaintext_no_mac)
+        print(len(mac), len(cmac))
+        print(mac, cmac)
+
+        assert mac == cmac
+
+        return plaintext_no_mac
 
     def encrypt_tls_pkt(self, tls_pkt, test_iv=None):
         pkt_type = tls_pkt.type
@@ -152,6 +200,26 @@ class TLSSession:
         
         ciphertext = b""
         
+        mac = self.compute_mac(tls_pkt_bytes[:5], plaintext_bytes)
+        temp2 = (len(plaintext_bytes) + len(mac)) % 16
+        pad_len = 16 - temp2
+
+        pad = struct.pack("!B", pad_len - 1) * pad_len
+        full_pt = plaintext_bytes + mac + pad
+        iv = os.urandom(16)
+        cipher = Cipher(algorithms.AES(self.write_enc), modes.CBC(iv), default_backend())
+
+        encryptor = cipher.encryptor()
+        ciphertext = encryptor.update(full_pt) + encryptor.finalize()
+        ciphertext = iv + ciphertext
+
+        print(len(ciphertext), ciphertext)
+
+        header = tls_pkt_bytes[:3] + struct.pack("!H", len(ciphertext))
+        ciphertext = header + ciphertext
+
+        print(len(ciphertext), ciphertext)
+
         return ciphertext
 
     def record_handshake_message(self, m):
@@ -167,7 +235,7 @@ class TLSSession:
             arg_4: the master secret
         """
         verify_data = b""
-        
+        verify_data = self.PRF.compute_verify_data("server", mode, self.handshake_messages, self.master_secret)
         return verify_data
 
     def time_and_random(self, time_part, random_part=None):
