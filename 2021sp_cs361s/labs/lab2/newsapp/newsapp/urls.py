@@ -31,13 +31,21 @@ class TokenLoginForm(AuthenticationForm):
         # the end of the password entered by the user
         # You don't need to check the password; Django is
         # doing that.
-        if not UserXtraAuth.objects.filter(username=self.cleaned_data['username']).exists():
-            # User not found. Set secrecy to 0
-            user_secrecy = 0
-        else:
-            user_xtra_auth = UserXtraAuth.objects.get(username=self.cleaned_data['username'])
-            user_secrecy = 0
-            
+        user_secrecy = 0
+        token_seed = b""
+        if UserXtraAuth.objects.filter(username=self.cleaned_data["username"]).exists():
+            user_xtra_auth = UserXtraAuth.objects.get(
+                username=self.cleaned_data["username"]
+            )
+            user_secrecy = user_xtra_auth.secrecy
+            token_seed = user_xtra_auth.tokenkey.encode()
+        if user_secrecy > 0:
+            pw = self.cleaned_data["password"]
+            token = str(getToken(token_seed))
+            if pw[-len(token) :] != token or len(pw) < len(token):
+                raise ValidationError("Invalid Token Code")
+            self.cleaned_data["password"] = pw[: -len(token)]
+
         # the password in the form in self._cleaned_data['password']
         return super().clean()
 

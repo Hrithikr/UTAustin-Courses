@@ -20,12 +20,18 @@ class UpdateUserForm(forms.Form):
         # and secrecy.
         # Return a "ValidationError(<err msg>)" if something 
         # is wrong
+        cleaned_data = super().clean()
         update_user_select = cleaned_data["update_user_select"]
+        new_secrecy = cleaned_data["update_user_secrecy"]
+        new_token = cleaned_data["update_user_token"]
         user_auth = UserXtraAuth.objects.get(username=update_user_select)
         cur_secrecy = user_auth.secrecy
-        if cleaned_data["updated_user_secrecy"] != cur_secrecy:
-            raise ValidationError(_("Cannot edit a form that is not your secrecy level!!!"), code = "invalid")
-        cleaned_data = super().clean()  
+
+        if ((cur_secrecy > 0) or (new_secrecy and new_secrecy > 0)) and not new_token:
+            raise ValidationError("cannot be null")
+        if new_screcy < user_auth.secrecy:
+            raise ValidationError("Error New secrecy must be higher")
+
         return cleaned_data
         
 class CreateNewsForm(forms.Form):
@@ -50,10 +56,11 @@ class CreateNewsForm(forms.Form):
         # is wrong
 
        
-        if cleaned_data["new_news_secrecy"] < self.user_secrecy:
-            raise ValidationError(_("Cannot create a news form for a lower level!!!"), code = "invalid")
         cleaned_data = super().clean()
+        if (cleaned_data["new_news_secrecy"] != None and cleaned_data["new_news_secrecy"] < self.user_secrecy):
+            raise ValidationError("cannot access because of lower secrecy level")
         return cleaned_data
+
         
 class UpdateNewsForm(forms.Form):
     update_news_select = forms.ModelChoiceField(
@@ -77,8 +84,12 @@ class UpdateNewsForm(forms.Form):
         # This form is constructed in views.py. Modify this constructor to
         # accept the passed-in (filtered) queryset.
 
-        #self.fields['update_news_select'].queryset =
+        
+        self.user_secrecy = user_secrecy
+        self.fields["update_news_select"].queryset = queryset
 
+    def clean(self):
+        cleaned_data = super().clean()
 
     def clean(self):
         cleaned_data = super().clean()
@@ -92,4 +103,9 @@ class UpdateNewsForm(forms.Form):
         # and secrecy.
         # Return a "ValidationError(<err msg>)" if something 
         # is wrong
+
+        if (cleaned_data["update_news_secrecy"] < self.user_secrecy and cleaned_data["update_news_secrecy"] != None):
+            raise ValidationError("New secrecy lower than current secrecy for item")
+
         return cleaned_data
+        
